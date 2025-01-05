@@ -1060,7 +1060,7 @@ void Connection::DispatchSingle(bool has_more, absl::FunctionRef<void()> invoke_
     ShrinkPipelinePool();  // Gradually release pipeline request pool.
     {
       cc_->sync_dispatch = true;
-      invoke_cb();
+      invoke_cb();  // DispatchCommand
       cc_->sync_dispatch = false;
     }
     last_interaction_ = time(nullptr);
@@ -1071,7 +1071,7 @@ void Connection::DispatchSingle(bool has_more, absl::FunctionRef<void()> invoke_
   }
 }
 
-Connection::ParserStatus Connection::ParseRedis() {
+Connection::ParserStatus Connection::ParseRedis() {  // io解析
   uint32_t consumed = 0;
   RedisParser::Result result = RedisParser::OK;
 
@@ -1103,7 +1103,7 @@ Connection::ParserStatus Connection::ParseRedis() {
         LogTraffic(id_, has_more, absl::MakeSpan(parse_args), service_->GetContextInfo(cc_.get()));
       }
 
-      DispatchSingle(has_more, dispatch_sync, dispatch_async);
+      DispatchSingle(has_more, dispatch_sync, dispatch_async);  // 
     }
     io_buf_.ConsumeInput(consumed);
   } while (RedisParser::OK == result && io_buf_.InputLen() > 0 && !reply_builder_->GetError());

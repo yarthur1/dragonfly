@@ -745,7 +745,7 @@ OpResult<vector<long>> OpHExpire(const OpArgs& op_args, string_view key, uint32_
 }
 
 // HSETEX key [NX] tll_sec field value field value ...
-void HSetEx(CmdArgList args, const CommandContext& cmd_cntx) {
+void HSetEx(CmdArgList args, const CommandContext& cmd_cntx) {  // 命令的回调函数
   CmdArgParser parser{args};
 
   string_view key = parser.Next();

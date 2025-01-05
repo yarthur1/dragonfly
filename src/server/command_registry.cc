@@ -98,7 +98,7 @@ bool CommandId::IsMultiTransactional() const {
 
 uint64_t CommandId::Invoke(CmdArgList args, const CommandContext& cmd_cntx) const {
   int64_t before = absl::GetCurrentTimeNanos();
-  handler_(args, cmd_cntx);
+  handler_(args, cmd_cntx);  // 命令的执行
   int64_t after = absl::GetCurrentTimeNanos();
 
   ServerState* ss = ServerState::tlocal();  // Might have migrated thread, read after invocation

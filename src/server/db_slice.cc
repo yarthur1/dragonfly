@@ -990,7 +990,7 @@ size_t DbSlice::DbSize(DbIndex db_ind) const {
   return 0;
 }
 
-bool DbSlice::Acquire(IntentLock::Mode mode, const KeyLockArgs& lock_args) {
+bool DbSlice::Acquire(IntentLock::Mode mode, const KeyLockArgs& lock_args) {  // 获取lock
   if (lock_args.fps.empty()) {  // Can be empty for NO_KEY_TRANSACTIONAL commands.
     return true;
   }
@@ -1007,7 +1007,7 @@ bool DbSlice::Acquire(IntentLock::Mode mode, const KeyLockArgs& lock_args) {
 
     for (LockFp fp : lock_args.fps) {
       if (uniq_fps_.insert(fp).second) {
-        lock_acquired &= lt.Acquire(fp, mode);
+        lock_acquired &= lt.Acquire(fp, mode);  // 有一个不成功则失败
       }
     }
   }

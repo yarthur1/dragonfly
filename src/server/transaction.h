@@ -100,7 +100,7 @@ class Transaction {
 
   friend void intrusive_ptr_release(Transaction* trans) noexcept {
     if (1 == trans->use_count_.fetch_sub(1, std::memory_order_release)) {
-      std::atomic_thread_fence(std::memory_order_acquire);
+      std::atomic_thread_fence(std::memory_order_acquire);  //内存屏障 之前的读操作不会排序到屏障之后
       delete trans;
     }
   }
@@ -194,7 +194,7 @@ class Transaction {
   ShardArgs GetShardArgs(ShardId sid) const;
 
   // Execute transaction hop. If conclude is true, it is removed from the pending queue.
-  void Execute(RunnableType cb, bool conclude);
+  void Execute(RunnableType cb, bool conclude);   // 完成后从queue移除
 
   // Execute single hop and conclude.
   // Callback should return OK for multi key invocations, otherwise return value is ill-defined.
@@ -387,7 +387,7 @@ class Transaction {
 
  private:
   // Holds number of locks for each IntentLock::Mode: shared and exlusive.
-  struct LockCnt {
+  struct LockCnt {  // 读写lock cnt
     unsigned& operator[](IntentLock::Mode mode) {
       return cnt[int(mode)];
     }
@@ -437,7 +437,7 @@ class Transaction {
   static_assert(sizeof(PerShardData) == 64);  // cacheline
 
   // State of a multi transaction.
-  struct MultiData {
+  struct MultiData {  // state
     MultiRole role;
     MultiMode mode;
     std::optional<IntentLock::Mode> lock_mode;
@@ -516,7 +516,7 @@ class Transaction {
   // false if inconsistent order was detected and the schedule needs to be cancelled.
   // if execute_optimistic is true - means we can try executing during the scheduling,
   // subject to uncontended keys.
-  bool ScheduleInShard(EngineShard* shard, bool execute_optimistic);
+  bool ScheduleInShard(EngineShard* shard, bool execute_optimistic);  // 保证事务的顺序
 
   // Optimized extension of ScheduleInShard. Pulls several transactions queued for scheduling.
   static void ScheduleBatchInShard();
@@ -623,10 +623,10 @@ class Transaction {
   const CommandId* cid_ = nullptr;    // Underlying command
   std::unique_ptr<MultiData> multi_;  // Initialized when the transaction is multi/exec.
 
-  TxId txid_{0};
+  TxId txid_{0};  // txid
   bool global_{false};
   Namespace* namespace_{nullptr};
-  DbIndex db_index_{0};
+  DbIndex db_index_{0};  // 每个事务只有一个db index
   uint64_t time_now_ms_{0};
 
   std::atomic_uint32_t use_count_{0};  // transaction exists only as an intrusive_ptr
@@ -658,7 +658,7 @@ class Transaction {
 
  private:
   struct TLTmpSpace {
-    std::vector<PerShardCache>& GetShardIndex(unsigned size);
+    std::vector<PerShardCache>& GetShardIndex(unsigned size);  // 截断并clear
 
    private:
     std::vector<PerShardCache> shard_cache;
@@ -667,7 +667,7 @@ class Transaction {
   static thread_local TLTmpSpace tmp_space;
 };
 
-template <typename F> auto Transaction::ScheduleSingleHopT(F&& f) -> decltype(f(this, nullptr)) {
+template <typename F> auto Transaction::ScheduleSingleHopT(F&& f) -> decltype(f(this, nullptr)) {  // 模版参数为回调函数,回调函数就是具体的命令执行
   decltype(f(this, nullptr)) res;
 
   ScheduleSingleHop([&res, f = std::forward<F>(f)](Transaction* t, EngineShard* shard) {

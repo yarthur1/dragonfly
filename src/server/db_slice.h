@@ -69,7 +69,7 @@ struct SliceEvents {
   SliceEvents& operator+=(const SliceEvents& o);
 };
 
-class DbSlice {
+class DbSlice {   // ?
   DbSlice(const DbSlice&) = delete;
   void operator=(const DbSlice&) = delete;
 

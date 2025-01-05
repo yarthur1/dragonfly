@@ -82,7 +82,7 @@ class EngineShard {
 
   // Processes TxQueue, blocked transactions or any other execution state related to that
   // shard. Tries executing the passed transaction if possible (does not guarantee though).
-  void PollExecution(const char* context, Transaction* trans);
+  void PollExecution(const char* context, Transaction* trans);  // 每个分片实际的执行的流程
 
   // Returns transaction queue.
   TxQueue* txq() {
@@ -238,9 +238,9 @@ class EngineShard {
   // return true if we did not complete the shard scan
   bool DoDefrag();
 
-  TaskQueue queue_, queue2_;
+  TaskQueue queue_, queue2_;  // 任务queue
 
-  TxQueue txq_;
+  TxQueue txq_;  // txn queue
   MiMemoryResource mi_resource_;
   ShardId shard_id_;
 
@@ -254,7 +254,7 @@ class EngineShard {
 
   // Logical ts used to order distributed transactions.
   TxId committed_txid_ = 0;
-  Transaction* continuation_trans_ = nullptr;
+  Transaction* continuation_trans_ = nullptr;  // 当前正在执行的事务?
   journal::Journal* journal_ = nullptr;
   IntentLock shard_lock_;
 
@@ -274,7 +274,7 @@ class EngineShard {
 
   Counter counter_[COUNTER_TOTAL];
 
-  static __thread EngineShard* shard_;
+  static __thread EngineShard* shard_;  // thread local
 };
 
 }  // namespace dfly

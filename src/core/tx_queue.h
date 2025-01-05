@@ -13,7 +13,7 @@ namespace dfly {
 class Transaction;
 
 // TxQueue implemmented as a circular doubly-linked list.
-class TxQueue {
+class TxQueue {  // 协程内不用加锁?
   void Link(uint32_t p, uint32_t n) {
     uint32_t next = vec_[p].next;
     vec_[n].next = next;

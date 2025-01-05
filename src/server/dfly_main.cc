@@ -780,7 +780,7 @@ Usage: dragonfly [FLAGS]
     bool use_epoll = ShouldUseEpollAPI(kver);
 
     if (use_epoll) {
-      pool.reset(fb2::Pool::Epoll(max_available_threads));
+      pool.reset(fb2::Pool::Epoll(max_available_threads));  //  线程引擎
     } else {
       pool.reset(fb2::Pool::IOUring(1024, max_available_threads));  // 1024 - iouring queue size.
     }
@@ -795,7 +795,7 @@ Usage: dragonfly [FLAGS]
     AcceptServer acceptor(pool.get(), &fb2::std_malloc_resource, true);
     acceptor.set_back_log(absl::GetFlag(FLAGS_tcp_backlog));
 
-    dfly::RunEngine(pool.get(), &acceptor);
+    dfly::RunEngine(pool.get(), &acceptor);  // 运行引擎
 
     pool->Stop();
 

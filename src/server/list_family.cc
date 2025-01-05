@@ -1202,7 +1202,7 @@ void ListFamily::RPop(CmdArgList args, const CommandContext& cmd_cntx) {
 void ListFamily::LLen(CmdArgList args, const CommandContext& cmd_cntx) {
   auto key = ArgS(args, 0);
   auto cb = [&](Transaction* t, EngineShard* shard) { return OpLen(t->GetOpArgs(shard), key); };
-  OpResult<uint32_t> result = cmd_cntx.tx->ScheduleSingleHopT(std::move(cb));
+  OpResult<uint32_t> result = cmd_cntx.tx->ScheduleSingleHopT(std::move(cb));  // 回调函数里面是具体的操作
   if (result) {
     cmd_cntx.rb->SendLong(result.value());
   } else if (result.status() == OpStatus::KEY_NOTFOUND) {
@@ -1481,7 +1481,7 @@ void ListFamily::Register(CommandRegistry* registry) {
       << CI{"BRPOP",    CO::WRITE | CO::NOSCRIPT | CO::BLOCKING | CO::NO_AUTOJOURNAL, -3, 1, -2,
             acl::kBRPop}
              .HFUNC(BRPop)
-      << CI{"LLEN", CO::READONLY | CO::FAST, 2, 1, 1, acl::kLLen}.HFUNC(LLen)
+      << CI{"LLEN", CO::READONLY | CO::FAST, 2, 1, 1, acl::kLLen}.HFUNC(LLen)  // 回调函数
       << CI{"LPOS", CO::READONLY | CO::FAST, -3, 1, 1, acl::kLPos}.HFUNC(LPos)
       << CI{"LINDEX", CO::READONLY, 3, 1, 1, acl::kLIndex}.HFUNC(LIndex)
       << CI{"LINSERT", CO::WRITE | CO::DENYOOM, 5, 1, 1, acl::kLInsert}.HFUNC(LInsert)

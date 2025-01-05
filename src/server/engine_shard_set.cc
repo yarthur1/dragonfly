@@ -109,7 +109,7 @@ void EngineShardSet::Init(uint32_t sz, std::function<void()> shard_handler) {
 
   size_ = sz;
   size_t max_shard_file_size = GetTieredFileLimit(sz);
-  pp_->AwaitFiberOnAll([this](uint32_t index, ProactorBase* pb) {
+  pp_->AwaitFiberOnAll([this](uint32_t index, ProactorBase* pb) {  // 每个线程都执行InitThreadLocal
     if (index < size_) {
       InitThreadLocal(pb);
     }

@@ -165,7 +165,7 @@ class RoundRobinSharder {
   static fb2::Mutex mutex_;
 };
 
-bool HasContendedLocks(ShardId shard_id, Transaction* trx, const DbTable* table) {
+bool HasContendedLocks(ShardId shard_id, Transaction* trx, const DbTable* table) {  // key冲突检测
   auto is_contended = [table](LockFp fp) { return table->trans_locks.Find(fp)->IsContended(); };
 
   if (trx->IsMulti()) {
@@ -575,7 +575,7 @@ void EngineShard::DestroyThreadLocal() {
 
 // Is called by Transaction::ExecuteAsync in order to run transaction tasks.
 // Only runs in its own thread.
-void EngineShard::PollExecution(const char* context, Transaction* trans) {
+void EngineShard::PollExecution(const char* context, Transaction* trans) {  // 
   DVLOG(2) << "PollExecution " << context << " " << (trans ? trans->DebugId() : "") << " "
            << txq_.size() << " " << (continuation_trans_ ? continuation_trans_->DebugId() : "");
 
@@ -595,7 +595,7 @@ void EngineShard::PollExecution(const char* context, Transaction* trans) {
   if (trans && trans_mask == 0)  // If not armed, it means that this poll task expired
     return;
 
-  if (trans_mask & Transaction::AWAKED_Q) {
+  if (trans_mask & Transaction::AWAKED_Q) {  // 被唤醒的事务
     CHECK(trans->GetNamespace().GetBlockingController(shard_id_)->HasAwakedTransaction());
     CHECK(continuation_trans_ == nullptr)
         << continuation_trans_->DebugId() << " when polling " << trans->DebugId()
@@ -603,7 +603,7 @@ void EngineShard::PollExecution(const char* context, Transaction* trans) {
         << trans->DEBUG_GetLocalMask(sid);
 
     // Commands like BRPOPLPUSH don't conclude immediately
-    if (trans->RunInShard(this, false)) {
+    if (trans->RunInShard(this, false)) {  // 如何执行
       // execution is blocked while HasAwakedTransaction() returns true, so no need to set
       // continuation_trans_. Moreover, setting it for wakened multi-hop transactions may lead to
       // inconcistency, see BLMoveSimultaneously test.
@@ -620,7 +620,7 @@ void EngineShard::PollExecution(const char* context, Transaction* trans) {
 
   auto run = [this, &dbg_id, &update_stats](Transaction* tx, bool is_ooo) -> bool /* keep */ {
     dbg_id = VLOG_IS_ON(1) ? tx->DebugId() : "";
-    bool keep = tx->RunInShard(this, is_ooo);
+    bool keep = tx->RunInShard(this, is_ooo);  // 如何执行 返回true表示下次继续执行
     DLOG_IF(INFO, !dbg_id.empty()) << dbg_id << ", keep " << keep << ", ooo " << is_ooo;
     update_stats = true;
     return keep;
@@ -650,7 +650,7 @@ void EngineShard::PollExecution(const char* context, Transaction* trans) {
   // Progress on the transaction queue if no transaction is running currently.
   Transaction* head = nullptr;
 
-  while (continuation_trans_ == nullptr && !txq_.Empty()) {
+  while (continuation_trans_ == nullptr && !txq_.Empty()) {  //处理txn queue head
     head = get<Transaction*>(txq_.Front());
 
     // Break if there are any awakened transactions, as we must give way to them
@@ -680,13 +680,13 @@ void EngineShard::PollExecution(const char* context, Transaction* trans) {
     committed_txid_ = txid;
 
     if (bool keep = run(head, false); keep)
-      continuation_trans_ = head;
+      continuation_trans_ = head;  // 事务还没运行完？
   }
 
   // If we disarmed, but didn't find ourselves in the loop, run now.
   if (trans && disarmed) {
     DCHECK(trans != head);
-    DCHECK(trans_mask & (Transaction::OUT_OF_ORDER | Transaction::SUSPENDED_Q));
+    DCHECK(trans_mask & (Transaction::OUT_OF_ORDER | Transaction::SUSPENDED_Q));  // 事务处于乱序或者挂起状态？
 
     bool is_ooo = trans_mask & Transaction::OUT_OF_ORDER;
     bool keep = run(trans, is_ooo);
@@ -861,7 +861,7 @@ bool EngineShard::ShouldThrottleForTiering() const {  // see header for formula 
          (UsedMemory() > tiering_redline + tiered_storage_->CoolMemoryUsage());
 }
 
-EngineShard::TxQueueInfo EngineShard::AnalyzeTxQueue() const {
+EngineShard::TxQueueInfo EngineShard::AnalyzeTxQueue() const {  // lock重排序
   const TxQueue* queue = txq();
 
   ShardId sid = shard_id();

@@ -65,7 +65,7 @@ class TaskQueue {
 
  private:
   util::fb2::FiberQueue queue_;
-  std::vector<util::fb2::Fiber> consumer_fibers_;
+  std::vector<util::fb2::Fiber> consumer_fibers_;  // 协程while 从queue获取job执行
   unsigned pool_max_size_;
 
   static __thread unsigned blocked_submitters_;

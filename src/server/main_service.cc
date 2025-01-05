@@ -758,7 +758,7 @@ Service::Service(ProactorPool* pp)
 #endif
 
   CHECK(shard_set == nullptr);
-  shard_set = new EngineShardSet(pp);
+  shard_set = new EngineShardSet(pp);  // 创建EngineShardSet
 
   // We support less than 1024 threads and we support less than 1024 shards.
   // For example, Scan uses 10 bits in cursor to encode shard id it currently traverses.
@@ -1135,7 +1135,7 @@ std::optional<ErrorReply> Service::VerifyCommandState(const CommandId* cid, CmdA
   return VerifyConnectionAclStatus(cid, &dfly_cntx, "has no ACL permissions", tail_args);
 }
 
-void Service::DispatchCommand(ArgSlice args, SinkReplyBuilder* builder,
+void Service::DispatchCommand(ArgSlice args, SinkReplyBuilder* builder,  // args
                               facade::ConnectionContext* cntx) {
   DCHECK(!args.empty());
   DCHECK_NE(0u, shard_set->size()) << "Init was not called";
@@ -1237,7 +1237,7 @@ void Service::DispatchCommand(ArgSlice args, SinkReplyBuilder* builder,
 
   dfly_cntx->cid = cid;
 
-  if (!InvokeCmd(cid, args_no_cmd, builder, dfly_cntx)) {
+  if (!InvokeCmd(cid, args_no_cmd, builder, dfly_cntx)) {  // 命令执行？
     builder->SendError("Internal Error");
     builder->CloseConnection();
   }
@@ -1347,7 +1347,7 @@ bool Service::InvokeCmd(const CommandId* cid, CmdArgList tail_args, SinkReplyBui
   auto last_error = builder->ConsumeLastError();
   DCHECK(last_error.empty());
   try {
-    invoke_time_usec = cid->Invoke(tail_args, CommandContext{tx, builder, cntx});
+    invoke_time_usec = cid->Invoke(tail_args, CommandContext{tx, builder, cntx});  // 
   } catch (std::exception& e) {
     LOG(ERROR) << "Internal error, system probably unstable " << e.what();
     return false;
@@ -2236,7 +2236,7 @@ void Service::Exec(CmdArgList args, const CommandContext& cmd_cntx) {
           }
         }
 
-        bool ok = InvokeCmd(scmd.Cid(), args, rb, cmd_cntx.conn_cntx);
+        bool ok = InvokeCmd(scmd.Cid(), args, rb, cmd_cntx.conn_cntx);  // 执行命令
         if (!ok || rb->GetError())  // checks for i/o error, not logical error.
           break;
       }
@@ -2396,7 +2396,7 @@ void Service::Pubsub(CmdArgList args, const CommandContext& cmd_cntx) {
 }
 
 void Service::Command(CmdArgList args, const CommandContext& cmd_cntx) {
-  unsigned cmd_cnt = 0;
+  unsigned cmd_cnt = 0;  // 命令个数
   registry_.Traverse([&](string_view name, const CommandId& cd) {
     if ((cd.opt_mask() & CO::HIDDEN) == 0) {
       ++cmd_cnt;

@@ -12,13 +12,13 @@ namespace dfly {
 // SHARED - can be acquired multiple times as long as other intents are absent.
 // EXCLUSIVE - is acquired only if it's the only lock recorded.
 // Transactions at the head of tx-queue are considered to be the ones that acquired the lock
-class IntentLock {
+class IntentLock {  //意向锁，每次acquire都会增加计数,返回加锁成功或者失败
  public:
   enum Mode { SHARED = 0, EXCLUSIVE = 1 };
 
   // Returns true if lock was acquired. In any case, the intent is recorded.
   bool Acquire(Mode m) {
-    ++cnt_[m];
+    ++cnt_[m];  // 先自增
 
     if (cnt_[1 ^ int(m)])
       return false;

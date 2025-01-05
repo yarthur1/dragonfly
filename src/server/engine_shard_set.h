@@ -67,7 +67,7 @@ class EngineShardSet {
   }
 
   // Uses a shard queue to dispatch. Callback runs in a dedicated fiber.
-  template <typename F> auto Add(ShardId sid, F&& f) {
+  template <typename F> auto Add(ShardId sid, F&& f) {  // 添加到分片引擎
     assert(sid < size_);
     return shards_[sid]->GetFiberQueue()->Add(std::forward<F>(f));
   }
@@ -78,7 +78,7 @@ class EngineShardSet {
 
   // Runs a brief function on all shards. Waits for it to complete.
   // `func` must not preempt.
-  template <typename U> void RunBriefInParallel(U&& func) const {
+  template <typename U> void RunBriefInParallel(U&& func) const {  // ?
     RunBriefInParallel(std::forward<U>(func), [](auto i) { return true; });
   }
 
@@ -114,7 +114,7 @@ class EngineShardSet {
 
  private:
   void InitThreadLocal(util::ProactorBase* pb);
-  util::ProactorPool* pp_;
+  util::ProactorPool* pp_;  // 
   std::unique_ptr<EngineShard*[]> shards_;
   uint32_t size_ = 0;
 };
@@ -129,7 +129,7 @@ void EngineShardSet::RunBriefInParallel(U&& func, P&& pred) const {
 
     bc->Add(1);
     util::ProactorBase* dest = pp_->at(i);
-    dest->DispatchBrief([&func, bc]() mutable {
+    dest->DispatchBrief([&func, bc]() mutable {  // 将任务派发
       func(EngineShard::tlocal());
       bc->Dec();
     });
@@ -145,7 +145,7 @@ template <typename U, typename P> void EngineShardSet::RunBlockingInParallel(U&&
                 "Callable must not have a return value!");
 
   for (uint32_t i = 0; i < size(); ++i) {
-    if (!pred(i))
+    if (!pred(i))  // 前置条件
       continue;
 
     bc->Add(1);

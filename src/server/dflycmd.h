@@ -95,7 +95,7 @@ struct FlowInfo {
 //      will be released by dragonfly. Then the ReplicaInfo is removed from the global map.
 //
 //
-class DflyCmd {
+class DflyCmd {  // 主从复制相关？
  public:
   // See class comments for state descriptions.
   enum class SyncState { PREPARATION, FULL_SYNC, STABLE_SYNC, CANCELLED };

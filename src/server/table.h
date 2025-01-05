@@ -108,17 +108,17 @@ class LockTable {
       return val;
     }
   };
-  absl::flat_hash_map<LockFp, IntentLock, Hasher> locks_;
+  absl::flat_hash_map<LockFp, IntentLock, Hasher> locks_;  // 意向锁
 };
 
 // A single Db table that represents a table that can be chosen with "SELECT" command.
 struct DbTable : boost::intrusive_ref_counter<DbTable, boost::thread_unsafe_counter> {
   PrimeTable prime;
   ExpireTable expire;
-  DashTable<PrimeKey, uint32_t, detail::ExpireTablePolicy> mcflag;
+  DashTable<PrimeKey, uint32_t, detail::ExpireTablePolicy> mcflag;  // dashtable实现
 
   // Contains transaction locks
-  LockTable trans_locks;
+  LockTable trans_locks;  // 锁表
 
   // Stores a list of dependant connections for each watched key.
   absl::flat_hash_map<std::string, std::vector<ConnectionState::ExecInfo*>> watched_keys;

@@ -25,7 +25,7 @@ void TaskQueue::Start(std::string_view base_name) {
     CHECK(!fb.IsJoinable());
 
     string name = absl::StrCat(base_name, "/", i);
-    fb = util::fb2::Fiber(name, [this] { queue_.Run(); });
+    fb = util::fb2::Fiber(name, [this] { queue_.Run(); });  // 多个协程从queue获取job？
   }
 }
 

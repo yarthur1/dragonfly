@@ -34,7 +34,7 @@ thread_local Transaction::TLTmpSpace Transaction::tmp_space;
 namespace {
 
 // Global txid sequence
-atomic_uint64_t op_seq{1};
+atomic_uint64_t op_seq{1};  // txn_id
 
 constexpr size_t kTransSize [[maybe_unused]] = sizeof(Transaction);
 
@@ -48,7 +48,7 @@ void AnalyzeTxQueue(const EngineShard* shard, const TxQueue* txq) {
     time_t now = time(nullptr);
     if (now >= last_log_time + 10) {
       last_log_time = now;
-      EngineShard::TxQueueInfo info = shard->AnalyzeTxQueue();
+      EngineShard::TxQueueInfo info = shard->AnalyzeTxQueue();  // 重排？
       string msg =
           StrCat("TxQueue is too long. Tx count:", info.tx_total, ", armed:", info.tx_armed,
                  ", runnable:", info.tx_runnable, ", total locks: ", info.total_locks,
@@ -113,7 +113,7 @@ ScheduleContext* MPSC_intrusive_load_next(const ScheduleContext& src) {
 }
 
 // of shard_num arity.
-ScheduleQ* schedule_queues = nullptr;
+ScheduleQ* schedule_queues = nullptr;  // 调度queue
 
 }  // namespace
 
@@ -121,7 +121,7 @@ bool Transaction::BatonBarrier::IsClaimed() const {
   return claimed_.load(memory_order_relaxed);
 }
 
-bool Transaction::BatonBarrier::TryClaim() {
+bool Transaction::BatonBarrier::TryClaim() {  //替换并返回old
   return !claimed_.exchange(true, memory_order_relaxed);  // false means first means success
 }
 
@@ -575,7 +575,7 @@ void Transaction::PrepareMultiForScheduleSingleHop(Namespace* ns, ShardId sid, D
 }
 
 // Runs in the dbslice thread. Returns true if the transaction continues running in the thread.
-bool Transaction::RunInShard(EngineShard* shard, bool txq_ooo) {
+bool Transaction::RunInShard(EngineShard* shard, bool txq_ooo) {  // 怎么执行
   DCHECK_GT(txid_, 0u);
   CHECK(cb_ptr_) << DebugId();
 
@@ -590,14 +590,14 @@ bool Transaction::RunInShard(EngineShard* shard, bool txq_ooo) {
   bool was_suspended = sd.local_mask & SUSPENDED_Q;
   bool awaked_prerun = sd.local_mask & AWAKED_Q;
 
-  IntentLock::Mode mode = LockMode();
+  IntentLock::Mode mode = LockMode();  // 共享或者独占锁
 
   DCHECK(IsGlobal() || (sd.local_mask & KEYLOCK_ACQUIRED) || (multi_ && multi_->mode == GLOBAL));
   DCHECK(!txq_ooo || (sd.local_mask & OUT_OF_ORDER));
 
   /*************************************************************************/
 
-  RunCallback(shard);
+  RunCallback(shard);  // 执行回调
 
   /*************************************************************************/
   // at least the coordinator thread owns the reference.
@@ -618,7 +618,7 @@ bool Transaction::RunInShard(EngineShard* shard, bool txq_ooo) {
   // If it's a final hop we should release the locks.
   if (is_concluding) {
     bool became_suspended = sd.local_mask & SUSPENDED_Q;
-    KeyLockArgs largs;
+    KeyLockArgs largs;  // lock指纹
 
     if (IsGlobal()) {
       DCHECK(!awaked_prerun && !became_suspended);  // Global transactions can not be blocking.
@@ -632,7 +632,7 @@ bool Transaction::RunInShard(EngineShard* shard, bool txq_ooo) {
       // touching those keys will be ordered via TxQueue. It's necessary because we preserve
       // the atomicity of awaked transactions by halting the TxQueue.
       if (was_suspended || !became_suspended) {
-        GetDbSlice(shard->shard_id()).Release(mode, largs);
+        GetDbSlice(shard->shard_id()).Release(mode, largs);  // 释放锁
         sd.local_mask &= ~KEYLOCK_ACQUIRED;
       }
       sd.local_mask &= ~OUT_OF_ORDER;
@@ -660,11 +660,11 @@ bool Transaction::RunInShard(EngineShard* shard, bool txq_ooo) {
   }
 
   FinishHop();  // From this point on we can not access 'this'.
-  return !is_concluding;
+  return !is_concluding;  // 没有结束
 }
 
-void Transaction::RunCallback(EngineShard* shard) {
-  DCHECK_EQ(shard, EngineShard::tlocal());
+void Transaction::RunCallback(EngineShard* shard) {  // 实际运行
+  DCHECK_EQ(shard, EngineShard::tlocal());  // 当前线程在分片线程
 
   RunnableResult result;
   try {
@@ -723,7 +723,7 @@ void Transaction::ScheduleInternal() {
   // - have a single shard, and thus never have to cancel scheduling due to reordering
   // - run as an idempotent command, meaning we can safely repeat the operation if scheduling fails
   bool optimistic_exec = !IsGlobal() && (coordinator_state_ & COORD_CONCLUDING) &&
-                         (unique_shard_cnt_ == 1 || (cid_->opt_mask() & CO::IDEMPOTENT));
+                         (unique_shard_cnt_ == 1 || (cid_->opt_mask() & CO::IDEMPOTENT));  // 单个分片或者幂等命令
 
   DVLOG(1) << "ScheduleInternal " << cid_->name() << " on " << unique_shard_cnt_ << " shards "
            << " optimistic_execution: " << optimistic_exec;
@@ -737,7 +737,7 @@ void Transaction::ScheduleInternal() {
     // This is a contention point for all threads - avoid using it unless necessary.
     // Single shard operations can assign txid later if the immediate run failed.
     if (unique_shard_cnt_ > 1)
-      txid_ = op_seq.fetch_add(1, memory_order_relaxed);
+      txid_ = op_seq.fetch_add(1, memory_order_relaxed);  // 每个分片一个txid
 
     InitTxTime();
 
@@ -753,7 +753,7 @@ void Transaction::ScheduleInternal() {
       break;
     }
 
-    ScheduleContext schedule_ctx{this, optimistic_exec};
+    ScheduleContext schedule_ctx{this, optimistic_exec};  // 调度context
 
     if (unique_shard_cnt_ == 1) {
       // Single shard optimization. Note: we could apply the same optimization
@@ -762,7 +762,7 @@ void Transaction::ScheduleInternal() {
       bool current_val = false;
       if (schedule_queues[unique_shard_id_].armed.compare_exchange_strong(current_val, true,
                                                                           memory_order_acq_rel)) {
-        shard_set->Add(unique_shard_id_, &Transaction::ScheduleBatchInShard);
+        shard_set->Add(unique_shard_id_, &Transaction::ScheduleBatchInShard);  // schedule_queues && shard_set
       }
     } else {
       auto cb = [&schedule_ctx]() {
@@ -773,7 +773,7 @@ void Transaction::ScheduleInternal() {
         schedule_ctx.trans->FinishHop();
       };
 
-      IterateActiveShards([cb](const auto& sd, ShardId i) { shard_set->Add(i, cb); });
+      IterateActiveShards([cb](const auto& sd, ShardId i) { shard_set->Add(i, cb); });  // 遍历分片,add的queue是mpscqueue,线程安全
 
       // Add this debugging function to print more information when we experience deadlock
       // during tests.
@@ -784,7 +784,7 @@ void Transaction::ScheduleInternal() {
     }
     run_barrier_.Wait();
 
-    if (schedule_ctx.fail_cnt.load(memory_order_relaxed) == 0) {
+    if (schedule_ctx.fail_cnt.load(memory_order_relaxed) == 0) {  // 没有失败跳出循环，意味着key都没有冲突
       break;
     }
 
@@ -793,12 +793,12 @@ void Transaction::ScheduleInternal() {
 
     atomic_bool should_poll_execution{false};
     auto cancel = [&](EngineShard* shard) {
-      bool res = CancelShardCb(shard);
+      bool res = CancelShardCb(shard);  //将调度成功的事务删除，根据txn记录的迭代器找到位置
       if (res) {
         should_poll_execution.store(true, memory_order_relaxed);
       }
     };
-    shard_set->RunBriefInParallel(std::move(cancel), is_active);
+    shard_set->RunBriefInParallel(std::move(cancel), is_active);  // 所有的都重新调度
 
     // We must follow up with PollExecution because in rare cases with multi-trans
     // that follows this one, we may find the next transaction in the queue that is never
@@ -849,33 +849,33 @@ void Transaction::UnlockMulti() {
   VLOG(1) << "UnlockMultiEnd " << DebugId();
 }
 
-OpStatus Transaction::ScheduleSingleHop(RunnableType cb) {
+OpStatus Transaction::ScheduleSingleHop(RunnableType cb) {  // 执行入口
   Execute(cb, true);
   return local_result_;
 }
 
 // Runs in coordinator thread.
-void Transaction::Execute(RunnableType cb, bool conclude) {
+void Transaction::Execute(RunnableType cb, bool conclude) {  // 命令执行
   if (multi_ && multi_->role == SQUASHED_STUB) {
-    local_result_ = RunSquashedMultiCb(cb);
+    local_result_ = RunSquashedMultiCb(cb);  // 不需调度，直接执行,考虑加锁？ 执行回调就行
     return;
   }
 
   local_result_ = OpStatus::OK;
-  cb_ptr_ = &cb;
+  cb_ptr_ = &cb;  //设置回调 Transaction::RunCallback会执行
 
-  if (IsAtomicMulti()) {
-    multi_->concluding = conclude;
+  if (IsAtomicMulti()) {  // 支持原子
+    multi_->concluding = conclude;  // concluding 结束
   } else {
-    coordinator_state_ = conclude ? (coordinator_state_ | COORD_CONCLUDING)
+    coordinator_state_ = conclude ? (coordinator_state_ | COORD_CONCLUDING)  // 最后一个命令
                                   : (coordinator_state_ & ~COORD_CONCLUDING);
   }
 
-  if ((coordinator_state_ & COORD_SCHED) == 0) {
-    ScheduleInternal();
+  if ((coordinator_state_ & COORD_SCHED) == 0) {  // 需要调度
+    ScheduleInternal();  // 调度的时候会获取锁
   }
 
-  DispatchHop();
+  DispatchHop();  // 将poll_cb添加到TaskQueue，自动取出回调并执行
   run_barrier_.Wait();
   cb_ptr_ = nullptr;
 
@@ -888,7 +888,7 @@ void Transaction::DispatchHop() {
   DVLOG(1) << "DispatchHop " << DebugId();
   DCHECK_GT(unique_shard_cnt_, 0u);
   DCHECK_GT(use_count_.load(memory_order_relaxed), 0u);
-  DCHECK(!IsAtomicMulti() || multi_->lock_mode.has_value());
+  DCHECK(!IsAtomicMulti() || multi_->lock_mode.has_value());  // 非原子或者已经加锁
   DCHECK_LE(shard_data_.size(), 1024u);
 
   // Hops can start executing immediately after being armed, so we
@@ -905,7 +905,7 @@ void Transaction::DispatchHop() {
   });
 
   DCHECK_EQ(run_cnt, poll_flags.count());
-  if (run_cnt == 0)  // all callbacks were run immediately
+  if (run_cnt == 0)  // all callbacks were run immediately 怎么立马运行
     return;
 
   run_barrier_.Start(run_cnt);
@@ -920,7 +920,7 @@ void Transaction::DispatchHop() {
   if (CanRunInlined()) {
     DCHECK_EQ(run_cnt, 1u);
     DVLOG(1) << "Short-circuit ExecuteAsync " << DebugId();
-    EngineShard::tlocal()->PollExecution("exec_cb", this);
+    EngineShard::tlocal()->PollExecution("exec_cb", this);  // EngineShard threadlocal变量 怎么执行
     return;
   }
 
@@ -934,7 +934,7 @@ void Transaction::DispatchHop() {
   };
   IterateShards([&poll_cb, &poll_flags](PerShardData& sd, auto i) {
     if (poll_flags.test(i))
-      shard_set->Add(i, poll_cb);
+      shard_set->Add(i, poll_cb);  // shard_set执行流程, 将poll_cb添加到TaskQueue
   });
 }
 
@@ -1026,7 +1026,7 @@ KeyLockArgs Transaction::GetLockArgs(ShardId sid) const {
   res.db_index = db_index_;
 
   if (unique_shard_cnt_ == 1) {
-    res.fps = {kv_fp_.data(), kv_fp_.size()};
+    res.fps = {kv_fp_.data(), kv_fp_.size()};  //  a key fingerprint used by the LockTable.
   } else {
     const auto& sd = shard_data_[sid];
     DCHECK_LE(sd.fp_start + sd.fp_count, kv_fp_.size());
@@ -1075,41 +1075,41 @@ OpArgs Transaction::GetOpArgs(EngineShard* shard) const {
 }
 
 // This function should not block since it's run via RunBriefInParallel.
-bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
+bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {  // 在分片上调度,execute_optimistic调度时执行
   ShardId sid = SidToId(shard->shard_id());
-  auto& sd = shard_data_[sid];
+  auto& sd = shard_data_[sid];  // PerShardData
 
   DCHECK(sd.local_mask & ACTIVE);
-  DCHECK_EQ(sd.local_mask & KEYLOCK_ACQUIRED, 0);
+  DCHECK_EQ(sd.local_mask & KEYLOCK_ACQUIRED, 0);  // 还没有获取到lock
   sd.local_mask &= ~(OUT_OF_ORDER | OPTIMISTIC_EXECUTION);
 
-  TxQueue* txq = shard->txq();
+  TxQueue* txq = shard->txq();  // EngineShard
   KeyLockArgs lock_args;
-  IntentLock::Mode mode = LockMode();
+  IntentLock::Mode mode = LockMode();  // lock类型
   bool lock_granted = false;
 
   // If a more recent transaction already commited, we abort
   if (txid_ > 0 && shard->committed_txid() >= txid_)
     return false;
 
-  auto release_fp_locks = [&]() {
+  auto release_fp_locks = [&]() {  // 解锁?
     GetDbSlice(shard->shard_id()).Release(mode, lock_args);
     sd.local_mask &= ~KEYLOCK_ACQUIRED;
   };
 
   // Acquire intent locks. Intent locks are always acquired, even if already locked by others.
   if (!IsGlobal()) {
-    lock_args = GetLockArgs(shard->shard_id());
-    bool shard_unlocked = shard->shard_lock()->Check(mode);
+    lock_args = GetLockArgs(shard->shard_id());  // 获取lock 指纹
+    bool shard_unlocked = shard->shard_lock()->Check(mode);  // 检测分片锁
 
     // We need to acquire the fp locks because the executing callback
     // within RunCallback below might preempt.
-    bool keys_unlocked = GetDbSlice(shard->shard_id()).Acquire(mode, lock_args);
+    bool keys_unlocked = GetDbSlice(shard->shard_id()).Acquire(mode, lock_args);  // 获取lock?
     lock_granted = shard_unlocked && keys_unlocked;
 
     sd.local_mask |= KEYLOCK_ACQUIRED;
     if (lock_granted) {
-      sd.local_mask |= OUT_OF_ORDER;
+      sd.local_mask |= OUT_OF_ORDER;  // 标记乱序
     }
 
     DVLOG(3) << "Lock granted " << lock_granted << " for trans " << DebugId();
@@ -1119,7 +1119,7 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
       sd.local_mask |= OPTIMISTIC_EXECUTION;
       shard->stats().tx_optimistic_total++;
 
-      RunCallback(shard);
+      RunCallback(shard);  // 立马执行？
 
       // Check state again, it could've been updated if the callback returned AVOID_CONCLUDING flag.
       // Only possible for single shard.
@@ -1141,7 +1141,7 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
   // and some other transaction already locked its keys we can not reorder 'trans' because
   // the transaction could have deduced that it can run OOO and eagerly execute. Hence, we
   // fail this scheduling attempt for trans.
-  if (!txq->Empty() && txid_ < txq->TailScore() && !lock_granted) {
+  if (!txq->Empty() && txid_ < txq->TailScore() && !lock_granted) {  // key冲突需要重排,会重新调度
     if (sd.local_mask & KEYLOCK_ACQUIRED) {
       release_fp_locks();
     }
@@ -1149,13 +1149,13 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
   }
 
   if (IsGlobal()) {
-    shard->shard_lock()->Acquire(mode);
+    shard->shard_lock()->Acquire(mode);  // global lock 分片锁
     VLOG(1) << "Global shard lock acquired";
   }
 
-  TxQueue::Iterator it = txq->Insert(this);
+  TxQueue::Iterator it = txq->Insert(this);  // 修改不需要加锁?
   DCHECK_EQ(TxQueue::kEnd, sd.pq_pos);
-  sd.pq_pos = it;
+  sd.pq_pos = it;  // 保存迭代器
 
   AnalyzeTxQueue(shard, txq);
   DVLOG(1) << "Insert into tx-queue, sid(" << sid << ") " << DebugId() << ", qlen " << txq->size();

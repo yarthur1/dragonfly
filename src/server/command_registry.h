@@ -125,7 +125,7 @@ class CommandId : public facade::CommandId {
 
   static const char* OptName(CO::CommandOpt fl);
 
-  CommandId&& SetHandler(Handler3 f) && {
+  CommandId&& SetHandler(Handler3 f) && {  // 设置命令回调
     handler_ = std::move(f);
     return std::move(*this);
   }

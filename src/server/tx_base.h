@@ -165,7 +165,7 @@ class ShardArgs {
       ++delta_;
       if (index() >= index_it_->second) {
         ++index_it_;
-        ++delta_ = 0;
+        ++delta_ = 0;  // ?
       }
       return *this;
     }
