@@ -650,7 +650,7 @@ void EngineShard::PollExecution(const char* context, Transaction* trans) {  //
   // Progress on the transaction queue if no transaction is running currently.
   Transaction* head = nullptr;
 
-  while (continuation_trans_ == nullptr && !txq_.Empty()) {  //处理txn queue head
+  while (continuation_trans_ == nullptr && !txq_.Empty()) {  //处理txn queue head  一个poll job不止执行一个事务？
     head = get<Transaction*>(txq_.Front());
 
     // Break if there are any awakened transactions, as we must give way to them

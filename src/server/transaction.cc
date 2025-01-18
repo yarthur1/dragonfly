@@ -520,7 +520,7 @@ void Transaction::MultiSwitchCmd(const CommandId* cid) {
   }
 
   if (multi_->mode == NON_ATOMIC) {
-    coordinator_state_ = 0;
+    coordinator_state_ = 0;  // coordinator_state_和local_mask都为0
     txid_ = 0;
   } else if (multi_->role == SQUASHED_STUB) {
     DCHECK_EQ(coordinator_state_, 0u);
@@ -714,7 +714,7 @@ void Transaction::RunCallback(EngineShard* shard) {  // 实际运行
 // For eval-like transactions - we can decide based on the command flavor (EVAL/EVALRO) or
 // auto-tune based on the static analysis (by identifying commands with hardcoded command names).
 void Transaction::ScheduleInternal() {
-  DCHECK_EQ(txid_, 0u);
+  DCHECK_EQ(txid_, 0u);  // 默认为零
   DCHECK_EQ(coordinator_state_ & COORD_SCHED, 0);
   DCHECK_GT(unique_shard_cnt_, 0u);
   DCHECK(!IsAtomicMulti() || cid_->IsMultiTransactional());
@@ -736,8 +736,8 @@ void Transaction::ScheduleInternal() {
 
     // This is a contention point for all threads - avoid using it unless necessary.
     // Single shard operations can assign txid later if the immediate run failed.
-    if (unique_shard_cnt_ > 1)
-      txid_ = op_seq.fetch_add(1, memory_order_relaxed);  // 每个分片一个txid
+    if (unique_shard_cnt_ > 1)  // 多分片
+      txid_ = op_seq.fetch_add(1, memory_order_relaxed);  // 每个分片一个txid no
 
     InitTxTime();
 
@@ -782,7 +782,7 @@ void Transaction::ScheduleInternal() {
                             " run_barrier_cnt: ", run_barrier_.DEBUG_Count(), "\n");
       });
     }
-    run_barrier_.Wait();
+    run_barrier_.Wait();  // 协程会切换
 
     if (schedule_ctx.fail_cnt.load(memory_order_relaxed) == 0) {  // 没有失败跳出循环，意味着key都没有冲突
       break;
@@ -798,7 +798,7 @@ void Transaction::ScheduleInternal() {
         should_poll_execution.store(true, memory_order_relaxed);
       }
     };
-    shard_set->RunBriefInParallel(std::move(cancel), is_active);  // 所有的都重新调度
+    shard_set->RunBriefInParallel(std::move(cancel), is_active);  // 所有的都重新调度,发送cancel job
 
     // We must follow up with PollExecution because in rare cases with multi-trans
     // that follows this one, we may find the next transaction in the queue that is never
@@ -809,7 +809,7 @@ void Transaction::ScheduleInternal() {
     // indication that we need to follow up with PollExecution and then send it to shard_set queue.
     // We do not need to wait for this callback to finish - just make sure it will eventually run.
     // See https://github.com/dragonflydb/dragonfly/issues/150 for more info.
-    if (should_poll_execution.load(memory_order_relaxed)) {
+    if (should_poll_execution.load(memory_order_relaxed)) {  // 如果有调度失败的情况，取消调度任务后先将任务执行,不要用sleep这种机制，调度失败就执行任务
       IterateActiveShards([](const auto& sd, auto i) {
         shard_set->Add(i, [] { EngineShard::tlocal()->PollExecution("cancel_cleanup", nullptr); });
       });
@@ -872,11 +872,11 @@ void Transaction::Execute(RunnableType cb, bool conclude) {  // 命令执行
   }
 
   if ((coordinator_state_ & COORD_SCHED) == 0) {  // 需要调度
-    ScheduleInternal();  // 调度的时候会获取锁
+    ScheduleInternal();  // 调度的时候会获取锁，会重试直到调度成功，调度失败会先poll job
   }
 
   DispatchHop();  // 将poll_cb添加到TaskQueue，自动取出回调并执行
-  run_barrier_.Wait();
+  run_barrier_.Wait();   // 等待任务执行完成,协程切换
   cb_ptr_ = nullptr;
 
   if (coordinator_state_ & COORD_CONCLUDING)
@@ -914,7 +914,7 @@ void Transaction::DispatchHop() {
   std::atomic_thread_fence(memory_order_release);  // once fence to avoid flushing writes in loop
   IterateActiveShards([&poll_flags](auto& sd, auto i) {
     if (poll_flags.test(i))
-      sd.is_armed.store(true, memory_order_relaxed);
+      sd.is_armed.store(true, memory_order_relaxed);  // 标记可以执行
   });
 
   if (CanRunInlined()) {
@@ -1089,7 +1089,7 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
   bool lock_granted = false;
 
   // If a more recent transaction already commited, we abort
-  if (txid_ > 0 && shard->committed_txid() >= txid_)
+  if (txid_ > 0 && shard->committed_txid() >= txid_)  // 重新调度,单个分片的txid_=0，保证严格单调递增
     return false;
 
   auto release_fp_locks = [&]() {  // 解锁?
@@ -1100,7 +1100,7 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
   // Acquire intent locks. Intent locks are always acquired, even if already locked by others.
   if (!IsGlobal()) {
     lock_args = GetLockArgs(shard->shard_id());  // 获取lock 指纹
-    bool shard_unlocked = shard->shard_lock()->Check(mode);  // 检测分片锁
+    bool shard_unlocked = shard->shard_lock()->Check(mode);  // 检测分片锁 全局锁
 
     // We need to acquire the fp locks because the executing callback
     // within RunCallback below might preempt.
@@ -1132,7 +1132,7 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
 
   // Single shard operations might have delayed acquiring txid unless neccessary.
   if (txid_ == 0) {
-    DCHECK_EQ(unique_shard_cnt_, 1u);
+    DCHECK_EQ(unique_shard_cnt_, 1u); // 单分片事务
     txid_ = op_seq.fetch_add(1, memory_order_relaxed);
     DCHECK_GT(txid_, shard->committed_txid());
   }
@@ -1149,7 +1149,7 @@ bool Transaction::ScheduleInShard(EngineShard* shard, bool execute_optimistic) {
   }
 
   if (IsGlobal()) {
-    shard->shard_lock()->Acquire(mode);  // global lock 分片锁
+    shard->shard_lock()->Acquire(mode);  // global lock 分片锁,global之后其他非全局事务会阻塞，global之间不会阻塞?
     VLOG(1) << "Global shard lock acquired";
   }
 
